@@ -2,8 +2,6 @@ import openai
 import streamlit as st
 import streamlit.components.v1 as components
 import urllib.parse
-import requests
-
 
 st.set_page_config(layout="wide")
 st.title("✈️ AI旅行プランナー ダッシュボード")
@@ -54,43 +52,14 @@ if st.button("行程表を作成！"):
                 col1, col2, col3 = st.columns([1.5, 2, 2])
 
                 with col1:
-                    st.markdown("#### 🎥 YouTube動画")
-
-                    YOUTUBE_API_KEY = st.secrets["YOUTUBE_API_KEY"]
-                    search_url = (
-                        f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1"
-                        f"&q={urllib.parse.quote(spot)}&key={YOUTUBE_API_KEY}&type=video"
-                    )
-
-                try:
-                    response = requests.get(search_url).json()
-                    if response.get("items"):
-                        video_id = response["items"][0]["id"]["videoId"]
-                        embed_url = f"https://www.youtube.com/embed/{video_id}"
-                        components.iframe(embed_url, height=300)
-                    else:
-                        st.warning(f"{spot} の動画が見つかりませんでした")
-                except Exception as e:
-                    st.error(f"動画取得エラー: {e}")
+                    st.markdown("#### 🎥 TikTok映像")
+                    search_link = f"https://www.tiktok.com/search?q={urllib.parse.quote(spot)}&t=0"
+                    st.markdown(f"[{spot} のTikTokを検索]({search_link})")
 
                 with col2:
-                    st.markdown("#### 🖼️ 写真（Pixabay）")
-
-                    PIXABAY_API_KEY = st.secrets["PIXABAY_API_KEY"]
-                    params = {
-                        "key": PIXABAY_API_KEY,
-                        "q": spot,
-                        "image_type": "photo",
-                        "per_page": 3,
-                        "safesearch": "true"
-                    }
-                    res = requests.get("https://pixabay.com/api/", params=params).json()
-
-                    if res.get("hits"):
-                        image_url = res["hits"][0]["webformatURL"]
-                        st.image(image_url, caption=f"{spot}のイメージ (Pixabay)")
-                    else:
-                        st.warning(f"{spot} の画像が見つかりませんでした（Pixabay）")
+                    st.markdown("#### 🖼️ 写真")
+                    image_url = f"https://source.unsplash.com/featured/?{urllib.parse.quote(spot)}"
+                    st.image(image_url, caption=f"{spot}のイメージ")
 
                 with col3:
                     st.markdown("#### 🗺️ Googleマップ")
@@ -99,3 +68,4 @@ if st.button("行程表を作成！"):
 
         except Exception as e:
             st.error(f"旅程の取得エラー: {e}")
+
