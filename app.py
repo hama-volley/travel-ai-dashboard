@@ -38,6 +38,24 @@ def fetch_youtube_embed(spot):
             return f"https://www.youtube.com/embed/{video_id}"
     return None
 
+# ✨ スポット名を抽出（長文からシンプルな地名だけを抽出）
+def extract_spot_name(description):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "以下の文章から観光地や施設名を1つだけ抽出してください。検索キーワードとして最適な短く明確な名称を返してください。"},
+                {"role": "user", "content": description}
+            ],
+            temperature=0.2,
+            max_tokens=20
+        )
+        return response.choices[0].message['content'].strip()
+    except Exception as e:
+        st.warning(f"スポット名の抽出に失敗しました: {e}")
+        return None
+
+
 # 📍 GoogleマップURL
 def get_map_embed_url(spot):
     query = urllib.parse.quote(spot)
@@ -60,9 +78,12 @@ if st.button("行程表を作成！"):
             st.markdown("### 📅 行程表（AI生成）")
             st.markdown(itinerary)
 
-            # 🔍 スポット抽出（簡易版：行単位で地名っぽいとこを拾う）
-            spots = [line.strip("・-：:") for line in itinerary.split("\n") if any(x in line for x in ["大阪", "通天閣", "城", "公園", "ハルカス", "橋", "寺", "駅"])]
-            spots = list(dict.fromkeys(spots))  # 重複除去
+            raw_lines = [line.strip("・-：:") for line in itinerary.split("\n") if line.strip()]
+            spots = []
+            for line in raw_lines:
+                spot = extract_spot_name(line)
+                if spot and spot not in spots:
+                    spots.append(spot)
 
             for spot in spots:
                 st.markdown(f"---\n\n### 📍 {spot}")
