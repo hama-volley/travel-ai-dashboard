@@ -68,11 +68,10 @@ if st.button("行程表を作成！"):
                         video_id = response["items"][0]["id"]["videoId"]
                         embed_url = f"https://www.youtube.com/embed/{video_id}"
                         components.iframe(embed_url, height=300)
-                else:
-                    st.warning(f"{spot} の動画が見つかりませんでした")
-            except Exception as e:
-                st.error(f"動画取得エラー: {e}")
-
+                    else:
+                        st.warning(f"{spot} の動画が見つかりませんでした")
+                except Exception as e:
+                    st.error(f"動画取得エラー: {e}")
 
                 with col2:
                     st.markdown("#### 🖼️ 写真（Pixabay）")
