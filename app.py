@@ -4,106 +4,80 @@ import requests
 import urllib.parse
 import streamlit.components.v1 as components
 
-# 🔐 Secrets
+# 🔑 APIキー読み込み
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 google_api_key = st.secrets["GOOGLE_API_KEY"]
 
 st.set_page_config(layout="wide")
-st.title("🗺️ AI旅行プランナー：地図切り替え機能付き")
+st.title("🗺️ AI旅行プランナー：観光地クリックで情報切替")
 
-# 🎯 入力
-destination = st.text_input("旅行したい内容を入力してね", "大阪で1泊2日旅行したい")
+# 🌟 ユーザー入力欄
+destination = st.text_input("どんな旅行がしたい？（例：大阪で1泊2日旅行したい）", "大阪で1泊2日旅行したい")
 
-# 📍 モード切り替え（地図表示）
-st.markdown("### 🧭 地図モード")
-map_mode = st.radio("地図を切り替える", ["🟥 全体マップ", "🔘 詳細マップ"])
-
-# 📜 行程表生成
 if st.button("行程表を作成！"):
-    with st.spinner("AIが行程表を作成中やで..."):
-        try:
-            gpt_res = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "あなたは旅行プランナーです。1泊2日の旅行プランを、時間順に作成してください。"},
-                    {"role": "user", "content": destination}
-                ]
-            )
-            itinerary = gpt_res.choices[0].message["content"]
-            st.markdown("### 🗓️ 行程表")
-            st.info(itinerary)
 
-            # 行単位でスポット候補抽出
-            lines = [line for line in itinerary.split("\n") if line.strip()]
-            extracted_spots = []
-            for line in lines:
+    with st.spinner("AIが旅行プランを作成中やで..."):
+
+        # 🧠 行程生成
+        res = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "あなたはプロの旅行プランナーです。時間付きの行程表を1泊2日で作成してください。"},
+                {"role": "user", "content": destination}
+            ]
+        )
+
+        itinerary_text = res.choices[0].message['content']
+        st.markdown("### 📅 行程表")
+        st.info(itinerary_text)
+
+        # ⛳ 観光地名だけ抽出
+        lines = [line for line in itinerary_text.split("\n") if line.strip()]
+        spots = []
+        for line in lines:
+            try:
                 spot_res = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
-                        {"role": "system", "content": "以下の行から観光地名のみを1つ抽出してください。"},
+                        {"role": "system", "content": "以下の行から観光地名だけを抽出してください（地名1つのみ）。"},
                         {"role": "user", "content": line}
                     ],
                     temperature=0.2,
-                    max_tokens=20
+                    max_tokens=10
                 )
                 spot = spot_res.choices[0].message["content"].strip()
-                if spot and spot not in extracted_spots:
-                    extracted_spots.append(spot)
+                if spot and spot not in spots:
+                    spots.append(spot)
+            except:
+                continue
 
-            # 🗺 全体マップ生成（Static）
-            if map_mode == "🟥 全体マップ":
-                st.markdown("### 🌐 全体マップ")
-                map_urls = []
-                for spot in extracted_spots:
-                    map_urls.append(urllib.parse.quote(spot))
-                joined = " ➔ ".join(extracted_spots)
-                map_query = urllib.parse.quote(" ".join(extracted_spots))
-                map_url = f"https://www.google.com/maps/embed/v1/directions?key={google_api_key}&origin={map_urls[0]}&destination={map_urls[-1]}&waypoints={'|'.join(map_urls[1:-1])}" if len(map_urls) >= 3 else f"https://www.google.com/maps/embed/v1/place?key={google_api_key}&q={map_urls[0]}"
-                components.iframe(map_url, height=300)
+        # 🔽 選択式
+        selected = st.radio("🔍 行程内の観光地を選んでね", spots)
 
-            for spot in extracted_spots:
-                st.markdown(f"---\n\n### 📍 {spot}")
+        col1, col2 = st.columns(2)
 
-                left, right = st.columns([1, 2])
+        with col1:
+            st.markdown("### 🖼 写真")
+            map_url = f"https://www.google.com/maps/embed/v1/place?key={google_api_key}&q={urllib.parse.quote(selected)}"
+            image_url = f"https://source.unsplash.com/600x400/?{urllib.parse.quote(selected)}"
+            st.image(image_url, caption=selected)
 
-                with left:
-                    st.markdown("### 🖼️ 写真")
-                    place_id_url = f"https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={urllib.parse.quote(spot)}&inputtype=textquery&fields=place_id&key={google_api_key}"
-                    place_id_res = requests.get(place_id_url).json()
-                    place_id = place_id_res["candidates"][0]["place_id"] if place_id_res.get("candidates") else None
+        with col2:
+            st.markdown("### 🗺 地図")
+            components.iframe(map_url, height=300)
 
-                    if place_id:
-                        detail_url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=photo&key={google_api_key}"
-                        photo_res = requests.get(detail_url).json()
-                        if "photos" in photo_res.get("result", {}):
-                            photo_ref = photo_res["result"]["photos"][0]["photo_reference"]
-                            photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={photo_ref}&key={google_api_key}"
-                            st.image(photo_url, caption=f"{spot}の写真")
-                        else:
-                            st.warning("写真が見つかりませんでした")
-                    else:
-                        st.warning("写真が見つかりませんでした")
+        st.markdown("---")
+        st.markdown("### 🏨 宿泊候補（全体表示）")
+        st.info("※ここに楽天トラベルAPI連携により、近隣のホテル一覧を今後表示予定です。")
 
-                    st.markdown("### 🏨 宿泊候補（準備中）")
-                    st.info("※楽天トラベルAPIで宿を表示予定です")
-
-                with right:
-                    if map_mode == "🔘 詳細マップ" and place_id:
-                        st.markdown("### 🗺️ 地図")
-                        embed_url = f"https://www.google.com/maps/embed/v1/place?key={google_api_key}&q=place_id:{place_id}"
-                        components.iframe(embed_url, height=300)
-
-                    st.markdown("### 💬 AI質問欄")
-                    user_q = st.text_input(f"{spot} に関する質問：", key=f"q_{spot}")
-                    if user_q:
-                        answer = openai.ChatCompletion.create(
-                            model="gpt-4",
-                            messages=[
-                                {"role": "system", "content": f"{spot}に関する質問です。観光案内として丁寧に答えてください。"},
-                                {"role": "user", "content": user_q}
-                            ]
-                        )
-                        st.success(answer.choices[0].message["content"])
-
-        except Exception as e:
-            st.error(f"エラー発生: {e}")
+        st.markdown("### 💬 AI質問欄")
+        user_question = st.text_input("観光地についてAIに聞きたいことは？")
+        if user_question:
+            qres = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": f"{selected} についてガイドとして丁寧に回答してください。"},
+                    {"role": "user", "content": user_question}
+                ]
+            )
+            st.success(qres.choices[0].message['content'])
