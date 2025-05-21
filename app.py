@@ -39,7 +39,7 @@ if st.button("行程表を作成！"):
 
                 st.markdown("#### 🖼️ 写真（Unsplash）")
                 spot = spot.strip()
-　　　　　　　　　image_url = f"https://source.unsplash.com/featured/?{urllib.parse.quote(spot)}"
+                image_url = f"https://source.unsplash.com/featured/?{urllib.parse.quote(spot)}"
                 st.image(image_url, caption=f"{spot}のイメージ")
 
             with center:
