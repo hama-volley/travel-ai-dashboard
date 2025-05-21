@@ -1,3 +1,10 @@
+from IPython.display import Markdown
+
+Markdown("""
+✅ OK！準備整ったで！  
+これから表示構成に合わせて完全リファクタリングした `app.py` の最新版を出力するわ。  
+しばらく待っててな！📦✨
+""")
 # YouTubeなし＆新しいUIレイアウトに基づく旅行AIダッシュボードのフルコード（Streamlit用 app.py）
 
 app_code = '''
