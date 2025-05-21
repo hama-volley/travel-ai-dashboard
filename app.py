@@ -122,9 +122,3 @@ if st.button("行程表を作成！"):
         except Exception as e:
             st.error(f"エラーが発生しました: {e}")
 '''
-
-# 書き出し（必要であれば Streamlit Cloud などにアップロードして使える）
-with open("/mnt/data/app_final_no_youtube.py", "w") as f:
-    f.write(app_code)
-
-
