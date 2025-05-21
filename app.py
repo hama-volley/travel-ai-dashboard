@@ -49,7 +49,7 @@ if st.button("行程表を作成！"):
             with col2:
                 st.markdown("#### 🗺️ Googleマップ")
                 map_query = urllib.parse.quote(spot)
-                map_url = f"https://www.google.com/maps/embed/v1/place?key={st.secrets[\"GOOGLE_MAPS_API_KEY\"]}&q={map_query}"
+                map_url = f'https://www.google.com/maps/embed/v1/place?key={st.secrets["GOOGLE_MAPS_API_KEY"]}&q={map_query}'
                 components.iframe(map_url, height=300)
 
                 st.markdown("#### 🏨 宿泊候補（楽天トラベルリンク）")
