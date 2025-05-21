@@ -4,6 +4,7 @@ import streamlit.components.v1 as components
 import urllib.parse
 import requests
 
+
 st.set_page_config(layout="wide")
 st.title("✈️ AI旅行プランナー ダッシュボード")
 
@@ -53,9 +54,25 @@ if st.button("行程表を作成！"):
                 col1, col2, col3 = st.columns([1.5, 2, 2])
 
                 with col1:
-                    st.markdown("#### 🎥 TikTok映像")
-                    search_link = f"https://www.tiktok.com/search?q={urllib.parse.quote(spot)}&t=0"
-                    st.markdown(f"[{spot} のTikTokを検索]({search_link})")
+                    st.markdown("#### 🎥 YouTube動画")
+
+                    YOUTUBE_API_KEY = st.secrets["YOUTUBE_API_KEY"]
+                    search_url = (
+                        f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1"
+                        f"&q={urllib.parse.quote(spot)}&key={YOUTUBE_API_KEY}&type=video"
+                    )
+
+                try:
+                    response = requests.get(search_url).json()
+                    if response.get("items"):
+                        video_id = response["items"][0]["id"]["videoId"]
+                        embed_url = f"https://www.youtube.com/embed/{video_id}"
+                        components.iframe(embed_url, height=300)
+                else:
+                    st.warning(f"{spot} の動画が見つかりませんでした")
+            except Exception as e:
+                st.error(f"動画取得エラー: {e}")
+
 
                 with col2:
                     st.markdown("#### 🖼️ 写真（Pixabay）")
