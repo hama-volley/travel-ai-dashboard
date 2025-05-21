@@ -2,6 +2,7 @@ import openai
 import streamlit as st
 import streamlit.components.v1 as components
 import urllib.parse
+import requests
 
 st.set_page_config(layout="wide")
 st.title("✈️ AI旅行プランナー ダッシュボード")
@@ -57,9 +58,23 @@ if st.button("行程表を作成！"):
                     st.markdown(f"[{spot} のTikTokを検索]({search_link})")
 
                 with col2:
-                    st.markdown("#### 🖼️ 写真")
-                    image_url = f"https://source.unsplash.com/featured/?{urllib.parse.quote(spot)}"
-                    st.image(image_url, caption=f"{spot}のイメージ")
+                st.markdown("#### 🖼️ 写真（Pixabay）")
+
+                PIXABAY_API_KEY = st.secrets["PIXABAY_API_KEY"]
+            params = {
+                "key": PIXABAY_API_KEY,
+                "q": spot,
+                "image_type": "photo",
+                "per_page": 3,
+                "safesearch": "true"
+                }
+            res = requests.get("https://pixabay.com/api/", params=params).json()
+
+            if res.get("hits"):
+                image_url = res["hits"][0]["webformatURL"]
+                st.image(image_url, caption=f"{spot}のイメージ (Pixabay)")
+            else:
+                st.warning(f"{spot} の画像が見つかりませんでした（Pixabay）")
 
                 with col3:
                     st.markdown("#### 🗺️ Googleマップ")
