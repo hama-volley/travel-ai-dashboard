@@ -1,4 +1,3 @@
-app_code = '''
 import openai
 import streamlit as st
 import requests
@@ -69,10 +68,10 @@ if st.button("行程表を作成！"):
             st.markdown("### 📅 行程表")
             st.markdown(itinerary)
 
-            lines = [line for line in itinerary.split("\\n") if line.strip()]
+            lines = [line for line in itinerary.split("\n") if line.strip()]
             extracted_spots = []
 
-            for line in lines:
+            for idx, line in enumerate(lines):
                 spot = extract_spot_name(line)
                 if not spot or spot in extracted_spots:
                     continue
@@ -82,11 +81,17 @@ if st.button("行程表を作成！"):
                 photo_url = get_place_photo_url(place_id, google_places_key) if place_id else None
                 map_url = get_map_embed_url_from_place_id(place_id, google_places_key) if place_id else None
 
-                st.markdown(f"---\\n\\n### 📍 {spot}")
+                st.markdown(f"---\n\n### 📍 {spot}")
+
+                center = st.container()
+                with center:
+                    st.markdown(f"#### 📝 プラン内容")
+                    st.info(line)
 
                 left_col, right_col = st.columns([3, 2])
                 with left_col:
                     upper, lower = st.columns(2)
+
                     with upper:
                         st.markdown("#### 🖼 写真")
                         if photo_url:
@@ -106,7 +111,7 @@ if st.button("行程表を作成！"):
                     st.info("ここに楽天トラベルAPIで周辺ホテル一覧を表示予定です。")
 
                     st.markdown("#### 💬 AI質問欄")
-                    user_question = st.text_input(f"{spot} に関する質問をどうぞ：", key=f"q_{spot}")
+                    user_question = st.text_input(f"{spot} に関する質問をどうぞ：", key=f"q_{spot}_{idx}")
                     if user_question:
                         answer = openai.ChatCompletion.create(
                             model="gpt-4",
@@ -119,4 +124,3 @@ if st.button("行程表を作成！"):
 
         except Exception as e:
             st.error(f"エラーが発生しました: {e}")
-'''
