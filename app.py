@@ -26,7 +26,7 @@ if st.button("行程表を作成！"):
             st.markdown("### 🗓️ 行程表（AI生成）")
             st.text(itinerary)
 
-            spot = "通天閣"
+            spot = "Tsutenkaku Tower"
 
             col1, center, col2 = st.columns([2, 3, 2])
 
@@ -38,7 +38,8 @@ if st.button("行程表を作成！"):
                 components.iframe(embed_url, height=300)
 
                 st.markdown("#### 🖼️ 写真（Unsplash）")
-                image_url = f"https://source.unsplash.com/400x300/?{urllib.parse.quote(spot)}"
+                spot = spot.strip()
+　　　　　　　　　image_url = f"https://source.unsplash.com/featured/?{urllib.parse.quote(spot)}"
                 st.image(image_url, caption=f"{spot}のイメージ")
 
             with center:
@@ -48,7 +49,7 @@ if st.button("行程表を作成！"):
             with col2:
                 st.markdown("#### 🗺️ Googleマップ")
                 map_query = urllib.parse.quote(spot)
-                map_url = f"https://www.google.com/maps/embed/v1/place?key=YOUR_GOOGLE_MAPS_API_KEY&q={map_query}"
+                map_url = f"https://www.google.com/maps/embed/v1/place?key={st.secrets[\"GOOGLE_MAPS_API_KEY\"]}&q={map_query}"
                 components.iframe(map_url, height=300)
 
                 st.markdown("#### 🏨 宿泊候補（楽天トラベルリンク）")
