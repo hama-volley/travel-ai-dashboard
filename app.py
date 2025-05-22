@@ -47,20 +47,34 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
-# --- YouTube動画取得：強化版（3件まで表示）---
-def get_youtube_video_ids(spot, api_key, max_results=3):
-    search_terms = [f"{spot} 観光", f"{spot} 旅行", f"{spot} 紹介", f"{spot} 観光地", spot]
-    for term in search_terms:
-        url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults={max_results}&q={urllib.parse.quote(term)}&type=video&key={api_key}"
-        res = requests.get(url).json()
-        items = res.get("items")
-        if items:
-            return [item["id"]["videoId"] for item in items if "videoId" in item["id"]]
-    return []
+# --- YouTube: 再生回数順で上位3件取得 ---
+def get_top_youtube_videos(spot, api_key, max_results=3):
+    query = f"{spot} 観光"
+    # Step 1: search API で最大10件取得
+    search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q={urllib.parse.quote(query)}&type=video&key={api_key}"
+    search_res = requests.get(search_url).json()
+    video_ids = [item["id"]["videoId"] for item in search_res.get("items", []) if "videoId" in item["id"]]
 
-# --- メイン画面構成 ---
+    if not video_ids:
+        return []
+
+    # Step 2: videos APIでviewCountを取得
+    details_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={','.join(video_ids)}&key={api_key}"
+    details_res = requests.get(details_url).json()
+
+    stats = {
+        item["id"]: int(item["statistics"].get("viewCount", 0))
+        for item in details_res.get("items", [])
+    }
+
+    # 並び替え（viewCount降順）
+    sorted_ids = sorted(stats, key=stats.get, reverse=True)
+
+    return sorted_ids[:max_results]
+
+# --- メインUI構成 ---
 st.set_page_config(layout="wide")
-st.title("🌍 行程 × 地図 × 写真 × YouTube ダッシュボード")
+st.title("🌍 行程 × 地図 × 写真 × YouTube（人気順）ダッシュボード")
 
 user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
 
@@ -85,7 +99,6 @@ if "steps" in st.session_state and st.session_state["steps"]:
     selected_step = st.selectbox("行程：", st.session_state["steps"])
     st.session_state["selected_step"] = selected_step
 
-    # スポット推定
     spot = next((s for s in st.session_state["spots"] if s in selected_step), st.session_state["spots"][0] if st.session_state["spots"] else "スポット未定")
     st.markdown(f"### 📍 {spot}")
 
@@ -108,9 +121,9 @@ if "steps" in st.session_state and st.session_state["steps"]:
         else:
             st.warning("地図情報なし")
 
-    # --- YouTube観光動画（最大3件） ---
-    st.markdown("#### 🎥 観光動画（YouTube）")
-    video_ids = get_youtube_video_ids(spot, youtube_key)
+    # --- YouTube観光動画（再生回数順） ---
+    st.markdown("#### 🎥 人気の観光動画")
+    video_ids = get_top_youtube_videos(spot, youtube_key)
     if video_ids:
         for vid in video_ids:
             youtube_url = f"https://www.youtube.com/embed/{vid}"
