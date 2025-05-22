@@ -24,7 +24,7 @@ def extract_spots(text):
         model="gpt-4",
         temperature=0.0,
         messages=[
-            {"role": "system", "content": "旅行の行程表から、訪れるべき観光地名・施設名のみを順番に1行ずつリスト形式で抽出してください。時間・食事・ホテル名は除いてください。"},
+            {"role": "system", "content": "以下の旅行行程から、観光名所、観光施設、ホテル、レストラン、カフェなどのスポット名のみを1行ずつ抽出してください。時間帯・食事・移動・日付・『2日目』などの表記は除外してください。リスト形式で出力してください。"},
             {"role": "user", "content": text}
         ]
     )
@@ -48,22 +48,25 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
-# --- Swiper UI生成（JS埋込＋index検出）
+# --- Swiper UI生成（JS埋込＋index検出） ---
 def render_swiper_and_listen(slides):
     cards = "".join([f"<div class='swiper-slide'>{s}</div>" for s in slides])
     html_code = f"""
     <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css" />
     <style>
       .swiper-slide {{
-        background: #f8f8f8;
+        background: #f9f9f9;
         border-radius: 12px;
         padding: 20px;
-        font-size: 18px;
-        height: 220px;
-        width: 80%;
+        font-size: 17px;
+        height: 170px;
+        width: 75%;
         margin: auto;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        cursor: pointer;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+      }}
+      .swiper-slide:hover {{
+        transform: scale(1.03);
       }}
     </style>
     <div class="swiper mySwiper">
@@ -76,6 +79,7 @@ def render_swiper_and_listen(slides):
         slidesPerView: "auto",
         centeredSlides: true,
         spaceBetween: 30,
+        speed: 400,
         pagination: {{
           el: ".swiper-pagination",
           clickable: true,
@@ -89,9 +93,9 @@ def render_swiper_and_listen(slides):
       }});
     </script>
     """
-    components.html(html_code, height=330)
+    components.html(html_code, height=310)
 
-# --- メイン画面構成 ---
+# --- メイン構成 ---
 st.set_page_config(layout="wide")
 st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード")
 
@@ -111,12 +115,13 @@ if st.button("AIで行程作成！"):
     st.session_state["steps"] = [line for line in itinerary.split("\n") if line.strip()]
     st.session_state["spots"] = extract_spots(itinerary)
     st.session_state["selected_index"] = 0
-# --- 表示部：スライドと連動する観光地 ---
+
+# --- 表示部：行程スライド・写真・地図 ---
 if st.session_state["steps"]:
     st.subheader("📅 行程表（スライド選択）")
     render_swiper_and_listen(st.session_state["steps"])
 
-    # スライド切替に反応するJSイベント受信
+    # JSイベントでインデックス反映（開発時の簡易処理）
     js_code = """
     <script>
     window.addEventListener("message", (event) => {
@@ -134,7 +139,7 @@ if st.session_state["steps"]:
     """
     components.html(js_code, height=0)
 
-    # --- 選択されたインデックスの観光地を取得 ---
+    # --- 選択スポットの表示 ---
     idx = st.session_state["selected_index"]
     if idx >= len(st.session_state["spots"]):
         idx = 0
