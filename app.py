@@ -4,9 +4,10 @@ import urllib.parse
 import streamlit.components.v1 as components
 from openai import OpenAI
 
-# --- 初期化 ---
+# --- API初期化 ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 google_key = st.secrets["GOOGLE_API_KEY"]
+youtube_key = st.secrets["YOUTUBE_API_KEY"]
 
 # --- セッション管理 ---
 if "itinerary" not in st.session_state:
@@ -46,9 +47,18 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
+# --- YouTube動画取得 ---
+def get_youtube_video_id(query, api_key):
+    url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q={urllib.parse.quote(query)}&type=video&key={api_key}"
+    res = requests.get(url).json()
+    items = res.get("items")
+    if items:
+        return items[0]["id"]["videoId"]
+    return None
+
 # --- メイン構成 ---
 st.set_page_config(layout="wide")
-st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード（安定版）")
+st.title("🌍 行程 × 地図 × 写真 × YouTube連動ダッシュボード")
 
 user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
 
@@ -67,13 +77,13 @@ if st.button("AIで行程作成！"):
     st.session_state["spots"] = extract_spots(itinerary)
     st.session_state["selected_step"] = st.session_state["steps"][0] if st.session_state["steps"] else ""
 
-# --- 表示 ---
+# --- 表示部 ---
 if "steps" in st.session_state and st.session_state["steps"]:
     st.subheader("📅 行程を選択")
     selected_step = st.selectbox("行程：", st.session_state["steps"])
     st.session_state["selected_step"] = selected_step
 
-    # ステップから該当スポットを自動抽出
+    # スポット推定
     spot = None
     for s in st.session_state["spots"]:
         if s in selected_step:
@@ -102,6 +112,15 @@ if "steps" in st.session_state and st.session_state["steps"]:
             components.iframe(map_url, height=300)
         else:
             st.warning("地図情報なし")
+
+    # --- YouTube動画 ---
+    st.markdown("#### 🎥 観光動画")
+    video_id = get_youtube_video_id(f"{spot} 観光", youtube_key)
+    if video_id:
+        youtube_url = f"https://www.youtube.com/embed/{video_id}"
+        components.iframe(youtube_url, height=300)
+    else:
+        st.info("動画が見つかりませんでした")
 
     # --- 質問欄と回答表示 ---
     st.markdown("#### 💬 質問してみよう")
