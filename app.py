@@ -1,175 +1,198 @@
 import streamlit as st
 import requests
 import urllib.parse
-import streamlit.components.v1 as components
 from openai import OpenAI
 
-# --- APIキー初期化 ---
+# --- APIキー ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 google_key = st.secrets["GOOGLE_API_KEY"]
-youtube_key = st.secrets["YOUTUBE_API_KEY"]
-rakuten_app_id = st.secrets["RAKUTEN_APP_ID"]
+rakuten_key = st.secrets["RAKUTEN_APP_ID"]
 
-# --- セッション ---
+# --- セッション初期化 ---
 if "itinerary" not in st.session_state:
     st.session_state["itinerary"] = ""
-if "spots" not in st.session_state:
-    st.session_state["spots"] = []
-if "selected_step" not in st.session_state:
-    st.session_state["selected_step"] = ""
+if "day1_spots" not in st.session_state:
+    st.session_state["day1_spots"] = []
+if "day2_spots" not in st.session_state:
+    st.session_state["day2_spots"] = []
 
-# --- GPT：スポット抽出 ---
-def extract_spots(text):
-    res = client.chat.completions.create(
-        model="gpt-4",
-        temperature=0.0,
-        messages=[
-            {"role": "system", "content": "以下の旅行行程から、観光名所、観光施設、ホテル、レストラン、カフェなどのスポット名のみを1行ずつ抽出してください。時間帯・食事・移動・日付・『2日目』などの表記は除外してください。リスト形式で出力してください。"},
-            {"role": "user", "content": text}
-        ]
-    )
-    return [line.strip("・-:：") for line in res.choices[0].message.content.split("\n") if line.strip()]
-
-# --- Google Maps：place_id, 緯度経度, 写真, 地図URL ---
+# --- Google API: place_id, lat/lng, photo ---
 def get_place_info(spot):
-    base = f"https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-    place_res = requests.get(base, params={
+    base_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+    params = {
         "input": spot,
         "inputtype": "textquery",
         "fields": "place_id",
         "key": google_key
+    }
+    res = requests.get(base_url, params=params).json()
+    place_id = res.get("candidates", [{}])[0].get("place_id")
+    if not place_id:
+        return None, None, None, None
+
+    detail_url = "https://maps.googleapis.com/maps/api/place/details/json"
+    res = requests.get(detail_url, params={
+        "place_id": place_id,
+        "fields": "geometry,photo",
+        "key": google_key
     }).json()
-    place_id = place_res.get("candidates", [{}])[0].get("place_id")
+    result = res.get("result", {})
+    loc = result.get("geometry", {}).get("location", {})
+    lat, lng = loc.get("lat"), loc.get("lng")
+    photos = result.get("photos", [])
+    photo_url = None
+    if photos:
+        ref = photos[0]["photo_reference"]
+        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference={ref}&key={google_key}"
+    return place_id, lat, lng, photo_url
 
-    lat, lng = None, None
-    if place_id:
-        detail_url = f"https://maps.googleapis.com/maps/api/place/details/json"
-        detail_res = requests.get(detail_url, params={
-            "place_id": place_id,
-            "fields": "geometry,photo",
-            "key": google_key
-        }).json()
-        geometry = detail_res.get("result", {}).get("geometry", {}).get("location", {})
-        lat = geometry.get("lat")
-        lng = geometry.get("lng")
-
-        photo_ref = None
-        photos = detail_res.get("result", {}).get("photos", [])
-        if photos:
-            photo_ref = photos[0].get("photo_reference")
-            photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={photo_ref}&key={google_key}"
-        else:
-            photo_url = None
-
-        map_url = f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
-        return place_id, lat, lng, photo_url, map_url
-
-    return None, None, None, None, None
-
-# --- YouTube検索リンクだけ表示 ---
-def get_youtube_link(spot):
-    return f"https://www.youtube.com/results?search_query={urllib.parse.quote(spot + ' 観光')}"
-
-# --- 楽天トラベル：緯度・経度でホテル検索 ---
-def get_hotels_by_location(lat, lng):
+# --- Google Map Embed with Polyline (JS) ---
+def generate_map_html(coords, color):
+    points = ",\n".join([f"{{lat: {lat}, lng: {lng}}}" for lat, lng in coords])
+    html = f"""
+    <html>
+      <head>
+        <script src="https://maps.googleapis.com/maps/api/js?key={google_key}"></script>
+        <script>
+          function initMap() {{
+            var map = new google.maps.Map(document.getElementById('map'), {{
+              zoom: 13,
+              center: {{lat: {coords[0][0]}, lng: {coords[0][1]}}}
+            }});
+            var route = new google.maps.Polyline({{
+              path: [{points}],
+              geodesic: true,
+              strokeColor: '{color}',
+              strokeOpacity: 1.0,
+              strokeWeight: 4
+            }});
+            route.setMap(map);
+            [{points}].forEach(loc => {{
+              new google.maps.Marker({{
+                position: loc,
+                map: map
+              }});
+            }});
+          }}
+        </script>
+        <style>
+          html, body, #map {{ height: 100%; margin: 0; padding: 0; }}
+        </style>
+      </head>
+      <body onload="initMap()">
+        <div id="map"></div>
+      </body>
+    </html>
+    """
+    return html
+# --- 楽天トラベルAPIで宿泊候補取得 ---
+def get_hotels(lat, lng):
     url = "https://app.rakuten.co.jp/services/api/Travel/SimpleHotelSearch/20170426"
     params = {
-        "applicationId": rakuten_app_id,
+        "applicationId": rakuten_key,
         "format": "json",
         "latitude": lat,
         "longitude": lng,
         "datumType": 1,
-        "hits": 5,
-        "searchRadius": 3  # 半径3km以内
+        "hits": 3,
+        "searchRadius": 3
     }
     r = requests.get(url, params=params).json()
     return r.get("hotels", [])
 
-# --- メイン構成 ---
+# --- YouTube検索リンク ---
+def get_youtube_link(spot):
+    return f"https://www.youtube.com/results?search_query={urllib.parse.quote(spot + ' 観光')}"
+
+# --- 行程入力と分類 ---
 st.set_page_config(layout="wide")
-st.title("🌍 AI旅行プランナー")
+st.title("🌍 超統合 旅行プランナーAI")
 
-user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
-
-if st.button("AIで行程作成！"):
+user_input = st.text_area("旅行プランを入力", "大阪で1泊2日観光したい")
+if st.button("AIで行程生成！"):
     res = client.chat.completions.create(
         model="gpt-4",
         temperature=0.7,
         messages=[
-            {"role": "system", "content": "あなたは旅行プランナーです。指定された旅程に対して、時間付きの行程表を1泊2日で作成してください。"},
+            {"role": "system", "content": "1泊2日の旅行プランを時間帯付きで日本語で作成してください。"},
             {"role": "user", "content": user_input}
         ]
     )
     itinerary = res.choices[0].message.content
     st.session_state["itinerary"] = itinerary
-    st.session_state["steps"] = [line for line in itinerary.split("\n") if line.strip()]
-    st.session_state["spots"] = extract_spots(itinerary)
-    st.session_state["selected_step"] = st.session_state["steps"][0] if st.session_state["steps"] else ""
+
+    # 日別分類
+    day1, day2 = [], []
+    current = None
+    for line in itinerary.splitlines():
+        if "1日目" in line:
+            current = "day1"
+        elif "2日目" in line:
+            current = "day2"
+        elif line.strip():
+            if current == "day1":
+                day1.append(line.strip("・-:： "))
+            elif current == "day2":
+                day2.append(line.strip("・-:： "))
+    st.session_state["day1_spots"] = day1
+    st.session_state["day2_spots"] = day2
 
 # --- 表示 ---
-if "steps" in st.session_state and st.session_state["steps"]:
-    st.subheader("📅 行程を選択")
-    selected_step = st.selectbox("行程：", st.session_state["steps"])
-    st.session_state["selected_step"] = selected_step
+if st.session_state["itinerary"]:
+    st.subheader("📝 行程表")
+    st.markdown(f"```\n{st.session_state['itinerary']}\n```")
 
-    # スポット名
-    spot = next((s for s in st.session_state["spots"] if s in selected_step), st.session_state["spots"][0])
-    st.markdown(f"### 📍 {spot}")
+    tab1, tab2 = st.tabs(["🟥 1日目", "🟦 2日目"])
+    for label, spots, tab, color in [("1日目", st.session_state["day1_spots"], tab1, "#FF0000"),
+                                     ("2日目", st.session_state["day2_spots"], tab2, "#0000FF")]:
+        with tab:
+            st.markdown(f"### 📍 {label}のスポット")
+            coords, infos = [], []
+            for spot in spots:
+                place_id, lat, lng, photo_url = get_place_info(spot)
+                if lat and lng:
+                    coords.append((lat, lng))
+                infos.append({
+                    "spot": spot,
+                    "lat": lat,
+                    "lng": lng,
+                    "photo": photo_url,
+                    "youtube": get_youtube_link(spot),
+                    "hotels": get_hotels(lat, lng) if lat and lng else []
+                })
 
-    # Googleからplace情報取得
-    place_id, lat, lng, photo_url, map_url = get_place_info(spot)
+            if coords:
+                html = generate_map_html(coords, color)
+                st.components.v1.html(html, height=500)
 
-    # 地図と写真
-    col1, col2 = st.columns(2)
+            for info in infos:
+                st.markdown(f"#### {info['spot']}")
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if info["photo"]:
+                        st.image(info["photo"], width=120)
+                with col2:
+                    st.markdown(f"[🎥 YouTubeで観光動画を見る]({info['youtube']})")
 
-    with col1:
-        st.markdown("#### 🖼 写真")
-        if photo_url:
-            st.image(photo_url, caption=spot)
-        else:
-            st.warning("画像が見つかりません")
+                if info["hotels"]:
+                    with st.expander("🏨 宿泊候補を表示"):
+                        for h in info["hotels"]:
+                            b = h["hotel"][0]["hotelBasicInfo"]
+                            st.markdown(f"**[{b['hotelName']}]({b['hotelInformationUrl']})**")
+                            st.image(b["hotelImageUrl"], width=200)
+                            st.markdown(f"最安: {b.get('hotelMinCharge', '不明')} 円")
+                            st.markdown(f"アクセス: {b.get('access', '情報なし')}")
+                            st.markdown("---")
 
-    with col2:
-        st.markdown("#### 🗺 地図")
-        if map_url:
-            components.iframe(map_url, height=300)
-        else:
-            st.warning("地図情報なし")
-
-    # YouTubeリンク
-    st.markdown("#### 🎥 YouTube検索リンク")
-    st.markdown(f"[🔗 {spot} 観光の動画を見る]({get_youtube_link(spot)})")
-
-    # 楽天トラベルホテル表示
-    st.markdown("#### 🏨 宿泊候補（楽天トラベル）")
-    if lat and lng:
-        hotels = get_hotels_by_location(lat, lng)
-        if hotels:
-            for h in hotels:
-                info = h["hotel"][0]["hotelBasicInfo"]
-                st.markdown(f"**[{info['hotelName']}]({info['hotelInformationUrl']})**")
-                st.image(info["hotelImageUrl"], width=200)
-                st.markdown(f"最安料金: {info.get('hotelMinCharge', '不明')} 円")
-                st.markdown(f"アクセス: {info.get('access', '情報なし')}")
-                st.markdown("---")
-        else:
-            st.info("周辺の宿泊情報が見つかりませんでした。")
-    else:
-        st.warning("位置情報が取得できなかったため、ホテル情報を表示できません。")
-
-    # 質問
-    st.markdown("#### 💬 質問してみよう")
-    q = st.text_input(f"{spot} についての質問は？", key="ask")
-    answer_placeholder = st.empty()
-
-    if q:
-        with st.spinner("AIが考え中やで..."):
-            ans = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": f"{spot} に関する観光案内を丁寧にお願いします。"},
-                    {"role": "user", "content": q}
-                ]
-            )
-            response_text = ans.choices[0].message.content
-            answer_placeholder.text_area("🧠 回答はこちら", response_text, height=150)
+                # 質問欄
+                st.markdown("#### 💬 質問してみよう")
+                q = st.text_input(f"{info['spot']} について質問：", key=info["spot"])
+                if q:
+                    ans = client.chat.completions.create(
+                        model="gpt-4",
+                        messages=[
+                            {"role": "system", "content": f"{info['spot']} に関する観光案内を丁寧にお願いします。"},
+                            {"role": "user", "content": q}
+                        ]
+                    )
+                    st.success(ans.choices[0].message.content)
