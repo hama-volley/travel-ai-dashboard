@@ -1,83 +1,174 @@
-import openai
 import streamlit as st
+import openai
 import requests
 import urllib.parse
 import streamlit.components.v1 as components
 
-# 🔑 APIキー読み込み
+# --- APIキー ---
 openai.api_key = st.secrets["OPENAI_API_KEY"]
-google_api_key = st.secrets["GOOGLE_API_KEY"]
+google_key = st.secrets["GOOGLE_API_KEY"]
 
+# --- セッション状態管理 ---
+if "itinerary" not in st.session_state:
+    st.session_state["itinerary"] = ""
+if "spots" not in st.session_state:
+    st.session_state["spots"] = []
+if "selected_index" not in st.session_state:
+    st.session_state["selected_index"] = 0
+if "steps" not in st.session_state:
+    st.session_state["steps"] = []
+
+# --- GPT：観光地抽出 ---
+def extract_spots(text):
+    res = openai.ChatCompletion.create(
+        model="gpt-4",
+        temperature=0.0,
+        messages=[
+            {"role": "system", "content": "旅行の行程表から、訪れるべき観光地名・施設名のみを順番に1行ずつリスト形式で抽出してください。時間・食事・ホテル名は除いてください。"},
+            {"role": "user", "content": text}
+        ]
+    )
+    return [line.strip("・-:：") for line in res.choices[0].message["content"].split("\n") if line.strip()]
+
+# --- Google Maps連携 ---
+def get_place_id(spot):
+    url = f"https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={urllib.parse.quote(spot)}&inputtype=textquery&fields=place_id&key={google_key}"
+    r = requests.get(url).json()
+    return r.get("candidates", [{}])[0].get("place_id")
+
+def get_photo_url(place_id):
+    url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=photo&key={google_key}"
+    r = requests.get(url).json()
+    photos = r.get("result", {}).get("photos", [])
+    if photos:
+        ref = photos[0]["photo_reference"]
+        return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={google_key}"
+    return None
+
+def get_map_embed_url(place_id):
+    return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
+
+# --- Swiper UI生成（JS埋込＋index検出）
+def render_swiper_and_listen(slides):
+    cards = "".join([f"<div class='swiper-slide'>{s}</div>" for s in slides])
+    html_code = f"""
+    <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css" />
+    <style>
+      .swiper-slide {{
+        background: #f8f8f8;
+        border-radius: 12px;
+        padding: 20px;
+        font-size: 18px;
+        height: 220px;
+        width: 80%;
+        margin: auto;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        cursor: pointer;
+      }}
+    </style>
+    <div class="swiper mySwiper">
+      <div class="swiper-wrapper">{cards}</div>
+      <div class="swiper-pagination"></div>
+    </div>
+    <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
+    <script>
+      const swiper = new Swiper(".mySwiper", {{
+        slidesPerView: "auto",
+        centeredSlides: true,
+        spaceBetween: 30,
+        pagination: {{
+          el: ".swiper-pagination",
+          clickable: true,
+        }},
+        on: {{
+          slideChange: function () {{
+            const index = swiper.realIndex;
+            window.parent.postMessage({{type: 'swiper-index', index}}, "*");
+          }},
+        }},
+      }});
+    </script>
+    """
+    components.html(html_code, height=330)
+
+# --- メイン画面構成 ---
 st.set_page_config(layout="wide")
-st.title("🗺️ AI旅行プランナー：観光地クリックで情報切替")
+st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード")
 
-# 🌟 ユーザー入力欄
-destination = st.text_input("どんな旅行がしたい？（例：大阪で1泊2日旅行したい）", "大阪で1泊2日旅行したい")
+user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
 
-if st.button("行程表を作成！"):
+if st.button("AIで行程作成！"):
+    res = openai.ChatCompletion.create(
+        model="gpt-4",
+        temperature=0.7,
+        messages=[
+            {"role": "system", "content": "あなたは旅行プランナーです。指定された旅程に対して、時間付きの行程表を1泊2日で作成してください。"},
+            {"role": "user", "content": user_input}
+        ]
+    )
+    itinerary = res.choices[0].message["content"]
+    st.session_state["itinerary"] = itinerary
+    st.session_state["steps"] = [line for line in itinerary.split("\n") if line.strip()]
+    st.session_state["spots"] = extract_spots(itinerary)
+    st.session_state["selected_index"] = 0
+# --- 表示部：スライドと連動する観光地 ---
+if st.session_state["steps"]:
+    st.subheader("📅 行程表（スライド選択）")
+    render_swiper_and_listen(st.session_state["steps"])
 
-    with st.spinner("AIが旅行プランを作成中やで..."):
+    # スライド切替に反応するJSイベント受信
+    js_code = """
+    <script>
+    window.addEventListener("message", (event) => {
+      if (event.data.type === "swiper-index") {
+        const index = event.data.index;
+        const form = new FormData();
+        form.append("index", index);
+        fetch("/_stcore/update_index", {
+          method: "POST",
+          body: form
+        }).then(() => window.location.reload());
+      }
+    });
+    </script>
+    """
+    components.html(js_code, height=0)
 
-        # 🧠 行程生成
-        res = openai.ChatCompletion.create(
+    # --- 選択されたインデックスの観光地を取得 ---
+    idx = st.session_state["selected_index"]
+    if idx >= len(st.session_state["spots"]):
+        idx = 0
+    spot = st.session_state["spots"][idx]
+    st.markdown(f"### 📍 {spot}")
+
+    col1, col2 = st.columns(2)
+    place_id = get_place_id(spot)
+
+    with col1:
+        st.markdown("#### 🖼 写真")
+        img = get_photo_url(place_id) if place_id else None
+        if img:
+            st.image(img, caption=spot)
+        else:
+            st.warning("画像が見つかりません")
+
+    with col2:
+        st.markdown("#### 🗺 地図")
+        if place_id:
+            map_url = get_map_embed_url(place_id)
+            components.iframe(map_url, height=300)
+        else:
+            st.warning("地図情報なし")
+
+    # --- 質問欄 ---
+    st.markdown("#### 💬 質問してみよう")
+    q = st.text_input(f"{spot} についての質問は？", key="ask")
+    if q:
+        ans = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "あなたはプロの旅行プランナーです。時間付きの行程表を1泊2日で作成してください。"},
-                {"role": "user", "content": destination}
+                {"role": "system", "content": f"{spot} に関する観光案内を丁寧にお願いします。"},
+                {"role": "user", "content": q}
             ]
         )
-
-        itinerary_text = res.choices[0].message['content']
-        st.markdown("### 📅 行程表")
-        st.info(itinerary_text)
-
-        # ⛳ 観光地名だけ抽出
-        lines = [line for line in itinerary_text.split("\n") if line.strip()]
-        spots = []
-        for line in lines:
-            try:
-                spot_res = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "以下の行から観光地名だけを抽出してください（地名1つのみ）。"},
-                        {"role": "user", "content": line}
-                    ],
-                    temperature=0.2,
-                    max_tokens=10
-                )
-                spot = spot_res.choices[0].message["content"].strip()
-                if spot and spot not in spots:
-                    spots.append(spot)
-            except:
-                continue
-
-        # 🔽 選択式
-        selected = st.radio("🔍 行程内の観光地を選んでね", spots)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("### 🖼 写真")
-            map_url = f"https://www.google.com/maps/embed/v1/place?key={google_api_key}&q={urllib.parse.quote(selected)}"
-            image_url = f"https://source.unsplash.com/600x400/?{urllib.parse.quote(selected)}"
-            st.image(image_url, caption=selected)
-
-        with col2:
-            st.markdown("### 🗺 地図")
-            components.iframe(map_url, height=300)
-
-        st.markdown("---")
-        st.markdown("### 🏨 宿泊候補（全体表示）")
-        st.info("※ここに楽天トラベルAPI連携により、近隣のホテル一覧を今後表示予定です。")
-
-        st.markdown("### 💬 AI質問欄")
-        user_question = st.text_input("観光地についてAIに聞きたいことは？")
-        if user_question:
-            qres = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": f"{selected} についてガイドとして丁寧に回答してください。"},
-                    {"role": "user", "content": user_question}
-                ]
-            )
-            st.success(qres.choices[0].message['content'])
+        st.success(ans.choices[0].message["content"])
