@@ -34,15 +34,15 @@ body, html, .stApp {
 """
 st.markdown(handwritten_css, unsafe_allow_html=True)
 
-# --- ライブラリ読み込み ---
-import openai
+# --- ライブラリ読み込み（新版SDK対応） ---
+from openai import OpenAI
 import requests
 import urllib.parse
 import streamlit.components.v1 as components
 
 # --- APIキー設定 ---
-openai.api_key = st.secrets['OPENAI_API_KEY']
-google_key      = st.secrets['GOOGLE_API_KEY']
+client = OpenAI(api_key=st.secrets['OPENAI_API_KEY'])
+google_key = st.secrets['GOOGLE_API_KEY']
 
 # --- セッション初期化 ---
 if 'itinerary' not in st.session_state:
@@ -52,9 +52,9 @@ if 'spots' not in st.session_state:
 if 'selected_spot' not in st.session_state:
     st.session_state.selected_spot = None
 
-# --- 観光地抽出 ---
+# --- 観光地抽出（新版SDK） ---
 def extract_spots(text: str) -> list:
-    resp = openai.ChatCompletion.create(
+    resp = client.chat.completions.create(
         model='gpt-4',
         messages=[
             {'role':'system','content':'行程表から訪問すべき観光地名のみを順番に1行ずつ抽出してください。時間・ホテル・食事は除外。'},
@@ -62,7 +62,7 @@ def extract_spots(text: str) -> list:
         ],
         temperature=0
     )
-    lines = resp.choices[0].message['content'].split('\n')
+    lines = resp.choices[0].message.content.split('\n')
     return [l.strip('・-：: ') for l in lines if l.strip()]
 
 # --- 地図・画像・説明取得 ---
@@ -79,7 +79,7 @@ def get_place_info(spot: str):
     ).json()
     pid = find.get('candidates', [{}])[0].get('place_id')
     if not pid:
-        return '説明なし','アクセスなし', None, None
+        return '説明なし','アクセスなし', None, (None, None)
     # 詳細取得
     det = requests.get(
         'https://maps.googleapis.com/maps/api/place/details/json',
@@ -105,14 +105,15 @@ st.sidebar.title('🗒️ 旅行プランAI')
 user_input = st.sidebar.text_input('旅行プランを入力：', '大阪で1泊2日旅行したい')
 if st.sidebar.button('✈️ 行程生成'):
     # AIで行程生成
-    plan = openai.ChatCompletion.create(
+    resp = client.chat.completions.create(
         model='gpt-4',
         messages=[
             {'role':'system','content':'あなたはプロの旅行プランナーです。1泊2日、時間付き行程表を作成してください。'},
             {'role':'user','content': user_input}
         ],
         temperature=0.7
-    ).choices[0].message['content']
+    )
+    plan = resp.choices[0].message.content
     st.session_state.itinerary = plan
     st.session_state.spots = extract_spots(plan)
     st.session_state.selected_spot = None
@@ -129,7 +130,6 @@ st.title('🖋️ 手書き風 旅行プランナーAI')
 if st.session_state.selected_spot:
     spot = st.session_state.selected_spot
     st.header(f'📍 {spot}')
-    # 情報取得
     with st.spinner('情報取得中...'):
         desc, access, img, (lat, lng) = get_place_info(spot)
     cols = st.columns([2,3])
