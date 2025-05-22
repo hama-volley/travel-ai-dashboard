@@ -4,12 +4,12 @@ import urllib.parse
 import streamlit.components.v1 as components
 from openai import OpenAI
 
-# --- API初期化 ---
+# --- 初期化 ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 google_key = st.secrets["GOOGLE_API_KEY"]
 youtube_key = st.secrets["YOUTUBE_API_KEY"]
 
-# --- セッション管理 ---
+# --- セッション ---
 if "itinerary" not in st.session_state:
     st.session_state["itinerary"] = ""
 if "spots" not in st.session_state:
@@ -29,7 +29,7 @@ def extract_spots(text):
     )
     return [line.strip("・-:：") for line in res.choices[0].message.content.split("\n") if line.strip()]
 
-# --- Google Maps連携 ---
+# --- Google Maps ---
 def get_place_id(spot):
     url = f"https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={urllib.parse.quote(spot)}&inputtype=textquery&fields=place_id&key={google_key}"
     r = requests.get(url).json()
@@ -47,18 +47,20 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
-# --- YouTube動画取得 ---
-def get_youtube_video_id(query, api_key):
-    url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q={urllib.parse.quote(query)}&type=video&key={api_key}"
-    res = requests.get(url).json()
-    items = res.get("items")
-    if items:
-        return items[0]["id"]["videoId"]
-    return None
+# --- YouTube動画取得：強化版（3件まで表示）---
+def get_youtube_video_ids(spot, api_key, max_results=3):
+    search_terms = [f"{spot} 観光", f"{spot} 旅行", f"{spot} 紹介", f"{spot} 観光地", spot]
+    for term in search_terms:
+        url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults={max_results}&q={urllib.parse.quote(term)}&type=video&key={api_key}"
+        res = requests.get(url).json()
+        items = res.get("items")
+        if items:
+            return [item["id"]["videoId"] for item in items if "videoId" in item["id"]]
+    return []
 
-# --- メイン構成 ---
+# --- メイン画面構成 ---
 st.set_page_config(layout="wide")
-st.title("🌍 行程 × 地図 × 写真 × YouTube連動ダッシュボード")
+st.title("🌍 行程 × 地図 × 写真 × YouTube ダッシュボード")
 
 user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
 
@@ -77,21 +79,14 @@ if st.button("AIで行程作成！"):
     st.session_state["spots"] = extract_spots(itinerary)
     st.session_state["selected_step"] = st.session_state["steps"][0] if st.session_state["steps"] else ""
 
-# --- 表示部 ---
+# --- 表示エリア ---
 if "steps" in st.session_state and st.session_state["steps"]:
     st.subheader("📅 行程を選択")
     selected_step = st.selectbox("行程：", st.session_state["steps"])
     st.session_state["selected_step"] = selected_step
 
     # スポット推定
-    spot = None
-    for s in st.session_state["spots"]:
-        if s in selected_step:
-            spot = s
-            break
-    if not spot:
-        spot = st.session_state["spots"][0] if st.session_state["spots"] else "スポット未定"
-
+    spot = next((s for s in st.session_state["spots"] if s in selected_step), st.session_state["spots"][0] if st.session_state["spots"] else "スポット未定")
     st.markdown(f"### 📍 {spot}")
 
     col1, col2 = st.columns(2)
@@ -113,16 +108,18 @@ if "steps" in st.session_state and st.session_state["steps"]:
         else:
             st.warning("地図情報なし")
 
-    # --- YouTube動画 ---
-    st.markdown("#### 🎥 観光動画")
-    video_id = get_youtube_video_id(f"{spot} 観光", youtube_key)
-    if video_id:
-        youtube_url = f"https://www.youtube.com/embed/{video_id}"
-        components.iframe(youtube_url, height=300)
+    # --- YouTube観光動画（最大3件） ---
+    st.markdown("#### 🎥 観光動画（YouTube）")
+    video_ids = get_youtube_video_ids(spot, youtube_key)
+    if video_ids:
+        for vid in video_ids:
+            youtube_url = f"https://www.youtube.com/embed/{vid}"
+            components.iframe(youtube_url, height=300)
     else:
-        st.info("動画が見つかりませんでした")
+        st.info("動画が見つかりませんでした。")
+        st.markdown(f"[🔗 YouTubeで検索する](https://www.youtube.com/results?search_query={urllib.parse.quote(spot + ' 観光')})")
 
-    # --- 質問欄と回答表示 ---
+    # --- 質問欄 ---
     st.markdown("#### 💬 質問してみよう")
     q = st.text_input(f"{spot} についての質問は？", key="ask")
     answer_placeholder = st.empty()
