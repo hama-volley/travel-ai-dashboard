@@ -95,7 +95,7 @@ def render_swiper_and_listen(slides):
     """
     components.html(html_code, height=310)
 
-# --- メイン構成 ---
+# --- ページ構成 ---
 st.set_page_config(layout="wide")
 st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード")
 
@@ -121,7 +121,7 @@ if st.session_state["steps"]:
     st.subheader("📅 行程表（スライド選択）")
     render_swiper_and_listen(st.session_state["steps"])
 
-    # JSイベントでインデックス反映（開発時の簡易処理）
+    # JSイベント → Pythonでインデックス更新
     js_code = """
     <script>
     window.addEventListener("message", (event) => {
@@ -139,7 +139,7 @@ if st.session_state["steps"]:
     """
     components.html(js_code, height=0)
 
-    # --- 選択スポットの表示 ---
+    # 選択中スポット
     idx = st.session_state["selected_index"]
     if idx >= len(st.session_state["spots"]):
         idx = 0
@@ -165,15 +165,47 @@ if st.session_state["steps"]:
         else:
             st.warning("地図情報なし")
 
-    # --- 質問欄 ---
+    # --- 質問欄と回答表示 ---
     st.markdown("#### 💬 質問してみよう")
     q = st.text_input(f"{spot} についての質問は？", key="ask")
+    answer_placeholder = st.empty()
+
     if q:
-        ans = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": f"{spot} に関する観光案内を丁寧にお願いします。"},
-                {"role": "user", "content": q}
-            ]
-        )
-        st.success(ans.choices[0].message["content"])
+        with st.spinner("AIが考え中やで..."):
+            ans = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": f"{spot} に関する観光案内を丁寧にお願いします。"},
+                    {"role": "user", "content": q}
+                ]
+            )
+            response_text = ans.choices[0].message["content"]
+            answer_placeholder.text_area("🧠 回答はこちら", response_text, height=150)
+
+# --- index更新エンドポイント定義 ---
+from streamlit.web.server.websocket_headers import _get_websocket_headers
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+from streamlit.runtime.runtime import Runtime
+from streamlit.runtime.state import session_state
+
+@st.experimental_singleton
+def _register_update_index_handler():
+    from fastapi import Request
+    from starlette.responses import Response
+
+    async def update_index(request: Request):
+        form = await request.form()
+        new_index = int(form["index"])
+        session_id = _get_websocket_headers().get("X-Streamlit-Session-ID")
+        ctx = get_script_run_ctx()
+        if ctx and session_id:
+            session = Runtime.instance()._session_mgr.get_session_info(session_id).session
+            session.session_state["selected_index"] = new_index
+        return Response(content="OK", status_code=200)
+
+    from streamlit.web.server import Server
+    server = Server.get_current()
+    if server:
+        server._app.add_api_route("/_stcore/update_index", update_index, methods=["POST"])
+
+_register_update_index_handler()
