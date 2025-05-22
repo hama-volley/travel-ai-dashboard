@@ -16,17 +16,19 @@ if "day1_spots" not in st.session_state:
 if "day2_spots" not in st.session_state:
     st.session_state["day2_spots"] = []
 
-# --- Google API: place_id, lat/lng, photo ---
+# --- Google API: place_id, lat/lng, photo（安全化）---
 def get_place_info(spot):
-    base_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-    params = {
+    find_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+    res = requests.get(find_url, params={
         "input": spot,
         "inputtype": "textquery",
         "fields": "place_id",
         "key": google_key
-    }
-    res = requests.get(base_url, params=params).json()
-    place_id = res.get("candidates", [{}])[0].get("place_id")
+    }).json()
+    candidates = res.get("candidates", [])
+    if not candidates:
+        return None, None, None, None
+    place_id = candidates[0].get("place_id")
     if not place_id:
         return None, None, None, None
 
@@ -42,11 +44,11 @@ def get_place_info(spot):
     photos = result.get("photos", [])
     photo_url = None
     if photos:
-        ref = photos[0]["photo_reference"]
+        ref = photos[0].get("photo_reference")
         photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference={ref}&key={google_key}"
     return place_id, lat, lng, photo_url
 
-# --- Google Map Embed with Polyline (JS) ---
+# --- 地図表示（Google Maps Embed + ポリライン） ---
 def generate_map_html(coords, color):
     points = ",\n".join([f"{{lat: {lat}, lng: {lng}}}" for lat, lng in coords])
     html = f"""
@@ -75,17 +77,14 @@ def generate_map_html(coords, color):
             }});
           }}
         </script>
-        <style>
-          html, body, #map {{ height: 100%; margin: 0; padding: 0; }}
-        </style>
+        <style>html, body, #map {{ height: 100%; margin: 0; padding: 0; }}</style>
       </head>
-      <body onload="initMap()">
-        <div id="map"></div>
-      </body>
+      <body onload="initMap()"><div id="map"></div></body>
     </html>
     """
     return html
-# --- 楽天トラベルAPIで宿泊候補取得 ---
+
+# --- 楽天ホテル検索（緯度経度） ---
 def get_hotels(lat, lng):
     url = "https://app.rakuten.co.jp/services/api/Travel/SimpleHotelSearch/20170426"
     params = {
@@ -104,7 +103,7 @@ def get_hotels(lat, lng):
 def get_youtube_link(spot):
     return f"https://www.youtube.com/results?search_query={urllib.parse.quote(spot + ' 観光')}"
 
-# --- 行程入力と分類 ---
+# --- UI ---
 st.set_page_config(layout="wide")
 st.title("🌍 超統合 旅行プランナーAI")
 
@@ -121,7 +120,6 @@ if st.button("AIで行程生成！"):
     itinerary = res.choices[0].message.content
     st.session_state["itinerary"] = itinerary
 
-    # 日別分類
     day1, day2 = [], []
     current = None
     for line in itinerary.splitlines():
@@ -184,7 +182,6 @@ if st.session_state["itinerary"]:
                             st.markdown(f"アクセス: {b.get('access', '情報なし')}")
                             st.markdown("---")
 
-                # 質問欄
                 st.markdown("#### 💬 質問してみよう")
                 q = st.text_input(f"{info['spot']} について質問：", key=info["spot"])
                 if q:
