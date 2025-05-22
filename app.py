@@ -188,7 +188,7 @@ from streamlit.runtime.scriptrunner import get_script_run_ctx
 from streamlit.runtime.runtime import Runtime
 from streamlit.runtime.state import session_state
 
-@st.experimental_singleton
+@st.cache_resource
 def _register_update_index_handler():
     from fastapi import Request
     from starlette.responses import Response
