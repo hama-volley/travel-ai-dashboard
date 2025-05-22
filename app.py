@@ -3,6 +3,7 @@ import openai
 import requests
 import urllib.parse
 import streamlit.components.v1 as components
+from streamlit_javascript import st_javascript
 
 # --- APIキー ---
 openai.api_key = st.secrets["OPENAI_API_KEY"]
@@ -48,8 +49,8 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
-# --- Swiper UI生成（JS埋込＋index検出） ---
-def render_swiper_and_listen(slides):
+# --- Swiper UI表示 ---
+def render_swiper(slides):
     cards = "".join([f"<div class='swiper-slide'>{s}</div>" for s in slides])
     html_code = f"""
     <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css" />
@@ -75,7 +76,7 @@ def render_swiper_and_listen(slides):
     </div>
     <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
     <script>
-      const swiper = new Swiper(".mySwiper", {{
+      window.swiper = new Swiper(".mySwiper", {{
         slidesPerView: "auto",
         centeredSlides: true,
         spaceBetween: 30,
@@ -83,12 +84,6 @@ def render_swiper_and_listen(slides):
         pagination: {{
           el: ".swiper-pagination",
           clickable: true,
-        }},
-        on: {{
-          slideChange: function () {{
-            const index = swiper.realIndex;
-            window.parent.postMessage({{type: 'swiper-index', index}}, "*");
-          }},
         }},
       }});
     </script>
@@ -116,30 +111,16 @@ if st.button("AIで行程作成！"):
     st.session_state["spots"] = extract_spots(itinerary)
     st.session_state["selected_index"] = 0
 
-# --- 表示部：行程スライド・写真・地図 ---
+# --- 表示部：行程スライド・写真・地図・質問 ---
 if st.session_state["steps"]:
     st.subheader("📅 行程表（スライド選択）")
-    render_swiper_and_listen(st.session_state["steps"])
+    render_swiper(st.session_state["steps"])
 
-    # JSイベント → Pythonでインデックス更新
-    js_code = """
-    <script>
-    window.addEventListener("message", (event) => {
-      if (event.data.type === "swiper-index") {
-        const index = event.data.index;
-        const form = new FormData();
-        form.append("index", index);
-        fetch("/_stcore/update_index", {
-          method: "POST",
-          body: form
-        }).then(() => window.location.reload());
-      }
-    });
-    </script>
-    """
-    components.html(js_code, height=0)
+    # JSからインデックスを取得
+    selected_index = st_javascript("window.swiper?.realIndex || 0;")
+    if isinstance(selected_index, int):
+        st.session_state["selected_index"] = selected_index
 
-    # 選択中スポット
     idx = st.session_state["selected_index"]
     if idx >= len(st.session_state["spots"]):
         idx = 0
@@ -181,31 +162,3 @@ if st.session_state["steps"]:
             )
             response_text = ans.choices[0].message["content"]
             answer_placeholder.text_area("🧠 回答はこちら", response_text, height=150)
-
-# --- index更新エンドポイント定義 ---
-from streamlit.web.server.websocket_headers import _get_websocket_headers
-from streamlit.runtime.scriptrunner import get_script_run_ctx
-from streamlit.runtime.runtime import Runtime
-from streamlit.runtime.state import session_state
-
-@st.cache_resource
-def _register_update_index_handler():
-    from fastapi import Request
-    from starlette.responses import Response
-
-    async def update_index(request: Request):
-        form = await request.form()
-        new_index = int(form["index"])
-        session_id = _get_websocket_headers().get("X-Streamlit-Session-ID")
-        ctx = get_script_run_ctx()
-        if ctx and session_id:
-            session = Runtime.instance()._session_mgr.get_session_info(session_id).session
-            session.session_state["selected_index"] = new_index
-        return Response(content="OK", status_code=200)
-
-    from streamlit.web.server import Server
-    server = Server.get_current()
-    if server:
-        server._app.add_api_route("/_stcore/update_index", update_index, methods=["POST"])
-
-_register_update_index_handler()
