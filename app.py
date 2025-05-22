@@ -5,11 +5,11 @@ import streamlit.components.v1 as components
 from streamlit_javascript import st_javascript
 from openai import OpenAI
 
-# --- OpenAI Client 初期化 ---
+# --- 初期化 ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 google_key = st.secrets["GOOGLE_API_KEY"]
 
-# --- セッション状態管理 ---
+# --- セッション管理 ---
 if "itinerary" not in st.session_state:
     st.session_state["itinerary"] = ""
 if "spots" not in st.session_state:
@@ -19,7 +19,7 @@ if "selected_index" not in st.session_state:
 if "steps" not in st.session_state:
     st.session_state["steps"] = []
 
-# --- GPT：観光地抽出 ---
+# --- GPT：スポット抽出 ---
 def extract_spots(text):
     res = client.chat.completions.create(
         model="gpt-4",
@@ -49,7 +49,7 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
-# --- Swiper UI表示 ---
+# --- Swiper 表示 ---
 def render_swiper(slides):
     cards = "".join([f"<div class='swiper-slide'>{s}</div>" for s in slides])
     html_code = f"""
@@ -90,7 +90,7 @@ def render_swiper(slides):
     """
     components.html(html_code, height=310)
 
-# --- ページ構成 ---
+# --- メインUI構成 ---
 st.set_page_config(layout="wide")
 st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード")
 
@@ -111,20 +111,28 @@ if st.button("AIで行程作成！"):
     st.session_state["spots"] = extract_spots(itinerary)
     st.session_state["selected_index"] = 0
 
-# --- 表示部：行程スライド・写真・地図・質問 ---
+# --- 表示部 ---
 if st.session_state["steps"]:
     st.subheader("📅 行程表（スライド選択）")
     render_swiper(st.session_state["steps"])
 
-    # JSでSwiper index取得
+    # JSからSwiperのindexを取得
     selected_index = st_javascript("window.swiper?.realIndex || 0;")
     if isinstance(selected_index, int):
         st.session_state["selected_index"] = selected_index
 
     idx = st.session_state["selected_index"]
-    if idx >= len(st.session_state["spots"]):
-        idx = 0
-    spot = st.session_state["spots"][idx]
+    step_text = st.session_state["steps"][idx]
+    spot = None
+
+    # ステップ内に含まれるスポットを抽出されたスポットリストから検索
+    for s in st.session_state["spots"]:
+        if s in step_text:
+            spot = s
+            break
+    if not spot:
+        spot = st.session_state["spots"][0] if st.session_state["spots"] else "スポット未定"
+
     st.markdown(f"### 📍 {spot}")
 
     col1, col2 = st.columns(2)
