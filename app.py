@@ -1,8 +1,12 @@
-# travel_planner_app.py
-
 import streamlit as st
+
+# ← ここでページ設定
+st.set_page_config(layout="wide")
+
 import openai
 import requests
+...
+
 import urllib.parse
 import streamlit.components.v1 as components
 
