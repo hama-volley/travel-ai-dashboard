@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import urllib.parse
 import streamlit.components.v1 as components
-from streamlit_javascript import st_javascript
 from openai import OpenAI
 
 # --- 初期化 ---
@@ -14,10 +13,8 @@ if "itinerary" not in st.session_state:
     st.session_state["itinerary"] = ""
 if "spots" not in st.session_state:
     st.session_state["spots"] = []
-if "selected_index" not in st.session_state:
-    st.session_state["selected_index"] = 0
-if "steps" not in st.session_state:
-    st.session_state["steps"] = []
+if "selected_step" not in st.session_state:
+    st.session_state["selected_step"] = ""
 
 # --- GPT：スポット抽出 ---
 def extract_spots(text):
@@ -49,50 +46,9 @@ def get_photo_url(place_id):
 def get_map_embed_url(place_id):
     return f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{place_id}"
 
-# --- Swiper 表示 ---
-def render_swiper(slides):
-    cards = "".join([f"<div class='swiper-slide'>{s}</div>" for s in slides])
-    html_code = f"""
-    <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css" />
-    <style>
-      .swiper-slide {{
-        background: #f9f9f9;
-        border-radius: 12px;
-        padding: 20px;
-        font-size: 17px;
-        height: 170px;
-        width: 75%;
-        margin: auto;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        transition: transform 0.3s ease;
-      }}
-      .swiper-slide:hover {{
-        transform: scale(1.03);
-      }}
-    </style>
-    <div class="swiper mySwiper">
-      <div class="swiper-wrapper">{cards}</div>
-      <div class="swiper-pagination"></div>
-    </div>
-    <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
-    <script>
-      window.swiper = new Swiper(".mySwiper", {{
-        slidesPerView: "auto",
-        centeredSlides: true,
-        spaceBetween: 30,
-        speed: 400,
-        pagination: {{
-          el: ".swiper-pagination",
-          clickable: true,
-        }},
-      }});
-    </script>
-    """
-    components.html(html_code, height=310)
-
-# --- メインUI構成 ---
+# --- メイン構成 ---
 st.set_page_config(layout="wide")
-st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード")
+st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード（安定版）")
 
 user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
 
@@ -109,25 +65,18 @@ if st.button("AIで行程作成！"):
     st.session_state["itinerary"] = itinerary
     st.session_state["steps"] = [line for line in itinerary.split("\n") if line.strip()]
     st.session_state["spots"] = extract_spots(itinerary)
-    st.session_state["selected_index"] = 0
+    st.session_state["selected_step"] = st.session_state["steps"][0] if st.session_state["steps"] else ""
 
-# --- 表示部 ---
-if st.session_state["steps"]:
-    st.subheader("📅 行程表（スライド選択）")
-    render_swiper(st.session_state["steps"])
+# --- 表示 ---
+if "steps" in st.session_state and st.session_state["steps"]:
+    st.subheader("📅 行程を選択")
+    selected_step = st.selectbox("行程：", st.session_state["steps"])
+    st.session_state["selected_step"] = selected_step
 
-    # JSからSwiperのindexを取得
-    selected_index = st_javascript("window.swiper?.realIndex || 0;")
-    if isinstance(selected_index, int):
-        st.session_state["selected_index"] = selected_index
-
-    idx = st.session_state["selected_index"]
-    step_text = st.session_state["steps"][idx]
+    # ステップから該当スポットを自動抽出
     spot = None
-
-    # ステップ内に含まれるスポットを抽出されたスポットリストから検索
     for s in st.session_state["spots"]:
-        if s in step_text:
+        if s in selected_step:
             spot = s
             break
     if not spot:
