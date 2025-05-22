@@ -1,12 +1,12 @@
 import streamlit as st
-import openai
 import requests
 import urllib.parse
 import streamlit.components.v1 as components
 from streamlit_javascript import st_javascript
+from openai import OpenAI
 
-# --- APIキー ---
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# --- OpenAI Client 初期化 ---
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 google_key = st.secrets["GOOGLE_API_KEY"]
 
 # --- セッション状態管理 ---
@@ -21,7 +21,7 @@ if "steps" not in st.session_state:
 
 # --- GPT：観光地抽出 ---
 def extract_spots(text):
-    res = openai.ChatCompletion.create(
+    res = client.chat.completions.create(
         model="gpt-4",
         temperature=0.0,
         messages=[
@@ -29,7 +29,7 @@ def extract_spots(text):
             {"role": "user", "content": text}
         ]
     )
-    return [line.strip("・-:：") for line in res.choices[0].message["content"].split("\n") if line.strip()]
+    return [line.strip("・-:：") for line in res.choices[0].message.content.split("\n") if line.strip()]
 
 # --- Google Maps連携 ---
 def get_place_id(spot):
@@ -97,7 +97,7 @@ st.title("🌍 行程 × 地図 × 写真 同期ダッシュボード")
 user_input = st.text_input("旅行プランを入力：", "大阪で1泊2日旅行したい")
 
 if st.button("AIで行程作成！"):
-    res = openai.ChatCompletion.create(
+    res = client.chat.completions.create(
         model="gpt-4",
         temperature=0.7,
         messages=[
@@ -105,7 +105,7 @@ if st.button("AIで行程作成！"):
             {"role": "user", "content": user_input}
         ]
     )
-    itinerary = res.choices[0].message["content"]
+    itinerary = res.choices[0].message.content
     st.session_state["itinerary"] = itinerary
     st.session_state["steps"] = [line for line in itinerary.split("\n") if line.strip()]
     st.session_state["spots"] = extract_spots(itinerary)
@@ -116,7 +116,7 @@ if st.session_state["steps"]:
     st.subheader("📅 行程表（スライド選択）")
     render_swiper(st.session_state["steps"])
 
-    # JSからインデックスを取得
+    # JSでSwiper index取得
     selected_index = st_javascript("window.swiper?.realIndex || 0;")
     if isinstance(selected_index, int):
         st.session_state["selected_index"] = selected_index
@@ -153,12 +153,12 @@ if st.session_state["steps"]:
 
     if q:
         with st.spinner("AIが考え中やで..."):
-            ans = openai.ChatCompletion.create(
+            ans = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": f"{spot} に関する観光案内を丁寧にお願いします。"},
                     {"role": "user", "content": q}
                 ]
             )
-            response_text = ans.choices[0].message["content"]
+            response_text = ans.choices[0].message.content
             answer_placeholder.text_area("🧠 回答はこちら", response_text, height=150)
