@@ -1,6 +1,9 @@
 import streamlit as st
+
+# ✅ 最初に書く必要あり（これがエラーの原因やった）
 st.set_page_config(layout="wide")
 
+# --- 以下は通常のimport ---
 import openai
 import requests
 import urllib.parse
