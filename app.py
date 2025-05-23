@@ -8,10 +8,10 @@ from openai import OpenAI
 from streamlit_lottie import st_lottie
 import re
 
-# --- ページ設定（最初に必ず） ---
+# --- ページ設定 ---
 st.set_page_config(page_title="旅行プランナーAI", layout="wide")
 
-# --- 手書き風CSS（Delancy風アレンジ） ---
+# --- CSS（Delancy風） ---
 delancy_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap');
@@ -45,7 +45,7 @@ body, html, .stApp {
 """
 st.markdown(delancy_css, unsafe_allow_html=True)
 
-# --- Lottie アニメーション ---
+# --- Lottie ---
 def load_lottieurl(url):
     r = requests.get(url)
     if r.status_code != 200:
@@ -54,7 +54,7 @@ def load_lottieurl(url):
 
 animation = load_lottieurl("https://assets9.lottiefiles.com/private_files/lf30_m6j5igxb.json")
 
-# --- API キー設定 ---
+# --- API設定 ---
 client = OpenAI(api_key=st.secrets['OPENAI_API_KEY'])
 google_key = st.secrets['GOOGLE_API_KEY']
 youtube_key = st.secrets.get('YOUTUBE_API_KEY', '')
@@ -65,7 +65,7 @@ if 'itinerary' not in st.session_state:
 if 'selected' not in st.session_state:
     st.session_state.selected = None
 
-# --- JSONブロック抽出関数 ---
+# --- JSON抽出 ---
 def extract_json_block(text):
     match = re.search(r"```(?:json)?\\s*(\[.*?\])\\s*```", text, re.DOTALL)
     if match:
@@ -77,9 +77,8 @@ def extract_json_block(text):
 def generate_itinerary(query):
     prompt = (
         "あなたはプロの旅行プランナーです。"
-        "以下の要件に基づき、1泊2日の時間付き行程表をJSON配列で返してください。"
-        "各要素は {\"day\": int, \"time\": str, \"spot\": str} 形式の辞書で構成してください。"
-        "例: [{\"day\": 1, \"time\": \"9:00\", \"spot\": \"大阪城\"}, ...]"
+        "以下の要件に基づき、1泊2日の旅行行程をJSON配列形式で出力してください。"
+        "出力は次の形式に従ってください: [{\"day\": 1, \"time\": \"9:00\", \"spot\": \"大阪城\"}, ...]"
     )
     try:
         response = client.chat.completions.create(
@@ -105,34 +104,36 @@ def generate_itinerary(query):
         st.error(f"行程生成中にエラー: {e}")
         return []
 
-# --- 地図・住所・画像・説明 ---
+# --- 場所情報取得 ---
 def get_place_info(name):
     try:
-        g = requests.get(
-            'https://maps.googleapis.com/maps/api/geocode/json',
-            params={'address': name, 'key': google_key}
-        ).json().get('results', [])
-        addr, lat, lng = ('住所情報なし', None, None)
-        if g:
-            addr = g[0].get('formatted_address', '')
-            loc = g[0]['geometry']['location']
-            lat, lng = loc['lat'], loc['lng']
-
+        # まずplace_idを取得
         find = requests.get(
             'https://maps.googleapis.com/maps/api/place/findplacefromtext/json',
             params={'input': name, 'inputtype': 'textquery', 'fields': 'place_id', 'key': google_key}
         ).json().get('candidates', [])
 
+        pid = find[0]['place_id'] if find else None
+
         desc = ''
         photo_url = None
-        pid = None
-        if find:
-            pid = find[0]['place_id']
+        addr, lat, lng = '住所情報なし', None, None
+
+        if pid:
             det = requests.get(
                 'https://maps.googleapis.com/maps/api/place/details/json',
-                params={'place_id': pid, 'fields': 'editorial_summary,photos', 'key': google_key}
+                params={
+                    'place_id': pid,
+                    'fields': 'editorial_summary,photos,geometry,formatted_address',
+                    'key': google_key
+                }
             ).json().get('result', {})
+
             desc = det.get('editorial_summary', {}).get('overview', '')
+            addr = det.get('formatted_address', '住所情報なし')
+            loc = det.get('geometry', {}).get('location', {})
+            lat, lng = loc.get('lat'), loc.get('lng')
+
             phs = det.get('photos', [])
             if phs:
                 ref = phs[0]['photo_reference']
@@ -154,7 +155,7 @@ def get_place_info(name):
         st.error(f"情報取得エラー: {e}")
         return '', '住所情報なし', None, (None, None), None
 
-# --- YouTubeリンク ---
+# --- YouTube取得 ---
 def get_youtube(name):
     if not youtube_key:
         return None
@@ -185,8 +186,6 @@ if st.session_state.itinerary:
             st.session_state.selected = {'day': day, 'time': time, 'spot': spot}
 
 st.title('🖋️ 手書き風 旅行プランナーAI')
-
-# Lottieアニメーション表示
 if animation:
     st_lottie(animation, height=250, key="header_anim")
 
@@ -197,6 +196,7 @@ if sel:
     with st.spinner('情報取得中...'):
         desc, addr, img, (lat, lng), pid = get_place_info(spot)
         yt = get_youtube(spot)
+
     col1, col2 = st.columns([2, 3])
     with col1:
         st.subheader('📖 説明')
@@ -210,6 +210,7 @@ if sel:
             st.image(img, caption=spot, use_container_width=True)
         else:
             st.warning('画像が見つかりませんでした')
+
     if pid:
         map_url = f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{pid}"
         components.iframe(map_url, height=300, allowfullscreen=True)
