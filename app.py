@@ -6,6 +6,7 @@ import json
 import streamlit.components.v1 as components
 from openai import OpenAI
 from streamlit_lottie import st_lottie
+import re
 
 # --- ページ設定（最初に必ず） ---
 st.set_page_config(page_title="旅行プランナーAI", layout="wide")
@@ -64,6 +65,14 @@ if 'itinerary' not in st.session_state:
 if 'selected' not in st.session_state:
     st.session_state.selected = None
 
+# --- JSONブロック抽出関数 ---
+def extract_json_block(text):
+    match = re.search(r"```(?:json)?\\s*(\[.*?\])\\s*```", text, re.DOTALL)
+    if match:
+        return match.group(1)
+    match = re.search(r"(\[\s*{.*?}\s*\])", text, re.DOTALL)
+    return match.group(1) if match else text
+
 # --- 行程生成 ---
 def generate_itinerary(query):
     prompt = (
@@ -86,18 +95,12 @@ def generate_itinerary(query):
             st.warning('OpenAIの応答が空でした。')
             return []
 
-        try:
-            parsed = json.loads(content)
-            if isinstance(parsed, list):
-                return parsed
-            else:
-                st.warning("応答形式が正しくありません。JSON配列を返すようにしてください。")
-                st.text(content)
-                return []
-        except json.JSONDecodeError as je:
-            st.error(f"JSON読み込みエラー: {je}")
-            st.text(content)
-            return []
+        cleaned = extract_json_block(content)
+        return json.loads(cleaned)
+    except json.JSONDecodeError as je:
+        st.error(f"JSON読み込みエラー: {je}")
+        st.text(content)
+        return []
     except Exception as e:
         st.error(f"行程生成中にエラー: {e}")
         return []
