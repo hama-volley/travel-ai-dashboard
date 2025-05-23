@@ -80,7 +80,15 @@ def generate_itinerary(query):
             ],
             temperature=0.7
         )
-        return json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content.strip()
+        if not content:
+            st.warning('OpenAIの応答が空でした。')
+            return []
+        return json.loads(content)
+    except json.JSONDecodeError as je:
+        st.error(f"JSON読み込みエラー: {je}")
+        st.text(content)  # デバッグ表示
+        return []
     except Exception as e:
         st.error(f"行程生成中にエラー: {e}")
         return []
