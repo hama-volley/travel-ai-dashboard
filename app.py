@@ -107,10 +107,12 @@ def generate_itinerary(query):
 # --- 場所情報取得 ---
 def get_place_info(name):
     try:
-        # まずplace_idを取得
+        # 明示的に "日本" をつけて曖昧さを回避
+        search_name = name + " 日本"
+
         find = requests.get(
             'https://maps.googleapis.com/maps/api/place/findplacefromtext/json',
-            params={'input': name, 'inputtype': 'textquery', 'fields': 'place_id', 'key': google_key}
+            params={'input': search_name, 'inputtype': 'textquery', 'fields': 'place_id', 'key': google_key}
         ).json().get('candidates', [])
 
         pid = find[0]['place_id'] if find else None
@@ -124,7 +126,7 @@ def get_place_info(name):
                 'https://maps.googleapis.com/maps/api/place/details/json',
                 params={
                     'place_id': pid,
-                    'fields': 'editorial_summary,photos,geometry,formatted_address',
+                    'fields': 'editorial_summary,photos,geometry,formatted_address,name',
                     'key': google_key
                 }
             ).json().get('result', {})
