@@ -2,3 +2,4 @@ streamlit
 openai>=1.0.0
 requests
 streamlit-javascript
+streamlit-lottie
