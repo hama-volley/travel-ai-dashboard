@@ -107,29 +107,31 @@ def generate_itinerary(query):
 # --- 場所情報取得 ---
 def get_place_info(name):
     try:
-        # 明示的に "日本" をつけて曖昧さを回避
         search_name = name + " 日本"
 
-        find = requests.get(
+        find_resp = requests.get(
             'https://maps.googleapis.com/maps/api/place/findplacefromtext/json',
             params={'input': search_name, 'inputtype': 'textquery', 'fields': 'place_id', 'key': google_key}
-        ).json().get('candidates', [])
+        )
+        find_resp.raise_for_status()
+        find = find_resp.json().get('candidates', [])
 
         pid = find[0]['place_id'] if find else None
-
         desc = ''
         photo_url = None
         addr, lat, lng = '住所情報なし', None, None
 
         if pid:
-            det = requests.get(
+            det_resp = requests.get(
                 'https://maps.googleapis.com/maps/api/place/details/json',
                 params={
                     'place_id': pid,
                     'fields': 'editorial_summary,photos,geometry,formatted_address,name',
                     'key': google_key
                 }
-            ).json().get('result', {})
+            )
+            det_resp.raise_for_status()
+            det = det_resp.json().get('result', {})
 
             desc = det.get('editorial_summary', {}).get('overview', '')
             addr = det.get('formatted_address', '住所情報なし')
@@ -162,14 +164,17 @@ def get_youtube(name):
     if not youtube_key:
         return None
     try:
-        items = requests.get(
+        yt_resp = requests.get(
             'https://www.googleapis.com/youtube/v3/search',
             params={'part': 'snippet', 'q': name + ' 観光', 'maxResults': 1, 'type': 'video', 'key': youtube_key}
-        ).json().get('items', [])
+        )
+        yt_resp.raise_for_status()
+        items = yt_resp.json().get('items', [])
         if items:
             return f"https://www.youtube.com/watch?v={items[0]['id']['videoId']}"
         return None
-    except:
+    except Exception as e:
+        st.error(f"YouTube取得エラー: {e}")
         return None
 
 # --- UI ---
