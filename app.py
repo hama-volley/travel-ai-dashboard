@@ -4,7 +4,7 @@ import streamlit as st
 import requests
 import json
 import streamlit.components.v1 as components
-import openai
+from openai import OpenAI
 
 # --- ページ設定（最初に必ず） ---
 st.set_page_config(page_title="旅行プランナーAI", layout="wide")
@@ -39,7 +39,7 @@ body, html, .stApp {
 st.markdown(handwritten_css, unsafe_allow_html=True)
 
 # --- API キー設定 ---
-openai.api_key = st.secrets['OPENAI_API_KEY']
+client = OpenAI(api_key=st.secrets['OPENAI_API_KEY'])
 google_key = st.secrets['GOOGLE_API_KEY']
 youtube_key = st.secrets.get('YOUTUBE_API_KEY', '')
 
@@ -57,7 +57,7 @@ def generate_itinerary(query):
         "各要素は {day:int, time:str, spot:str} という辞書形式にしてください。"
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model='gpt-4',
             messages=[
                 {'role': 'system', 'content': prompt},
@@ -65,7 +65,7 @@ def generate_itinerary(query):
             ],
             temperature=0.7
         )
-        return json.loads(response['choices'][0]['message']['content'])
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
         st.error(f"行程生成中にエラー: {e}")
         return []
@@ -103,7 +103,7 @@ def get_place_info(name):
                 photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={google_key}"
 
         if not desc:
-            ai = openai.ChatCompletion.create(
+            ai = client.chat.completions.create(
                 model='gpt-4',
                 messages=[
                     {'role': 'system', 'content': '以下のスポットを100字以内で説明してください。'},
@@ -111,7 +111,7 @@ def get_place_info(name):
                 ],
                 temperature=0.7
             )
-            desc = ai['choices'][0]['message']['content']
+            desc = ai.choices[0].message.content
 
         return desc, addr, photo_url, (lat, lng)
     except Exception as e:
