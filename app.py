@@ -5,38 +5,53 @@ import requests
 import json
 import streamlit.components.v1 as components
 from openai import OpenAI
+from streamlit_lottie import st_lottie
 
 # --- ページ設定（最初に必ず） ---
 st.set_page_config(page_title="旅行プランナーAI", layout="wide")
 
-# --- 手書き風CSS ---
-handwritten_css = """
+# --- 手書き風CSS（Delancy風アレンジ） ---
+delancy_css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap');
 body, html, .stApp {
-  font-family: 'Zen Maru Gothic', cursive;
-  background-color: #fdf6e3;
+  font-family: 'Zen Maru Gothic', sans-serif;
+  background-color: #FAF3E0;
   color: #333;
 }
 .stSidebar {
-  background-color: #fdf6e3 !important;
-  border-right: 2px dashed #ccc;
+  background-color: #FAF3E0 !important;
+  border-right: 2px solid #A8C1A1;
 }
 .stButton>button {
-  background-color: #fff8dc;
-  border: 2px dashed #999;
+  background-color: #A8C1A1;
+  color: #FFFFFF;
+  border: none;
   border-radius: 8px;
   padding: 0.5em 1em;
   font-weight: bold;
+  transition: 0.3s;
+}
+.stButton>button:hover {
+  background-color: #8DAE90;
 }
 .stTextInput>div>input {
-  background-color: #fff8dc;
-  border: 1px dashed #aaa;
+  background-color: #FFFFFF;
+  border: 1px solid #A8C1A1;
   border-radius: 4px;
 }
 </style>
 """
-st.markdown(handwritten_css, unsafe_allow_html=True)
+st.markdown(delancy_css, unsafe_allow_html=True)
+
+# --- Lottie アニメーション ---
+def load_lottieurl(url):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return None
+    return r.json()
+
+animation = load_lottieurl("https://assets9.lottiefiles.com/private_files/lf30_m6j5igxb.json")
 
 # --- API キー設定 ---
 client = OpenAI(api_key=st.secrets['OPENAI_API_KEY'])
@@ -149,6 +164,11 @@ if st.session_state.itinerary:
             st.session_state.selected = {'day': day, 'time': time, 'spot': spot}
 
 st.title('🖋️ 手書き風 旅行プランナーAI')
+
+# Lottieアニメーション表示
+if animation:
+    st_lottie(animation, height=250, key="header_anim")
+
 sel = st.session_state.selected
 if sel:
     spot = sel['spot']
