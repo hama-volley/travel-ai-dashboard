@@ -69,7 +69,8 @@ def generate_itinerary(query):
     prompt = (
         "あなたはプロの旅行プランナーです。"
         "以下の要件に基づき、1泊2日の時間付き行程表をJSON配列で返してください。"
-        "各要素は {day:int, time:str, spot:str} という辞書形式にしてください。"
+        "各要素は {\"day\": int, \"time\": str, \"spot\": str} 形式の辞書で構成してください。"
+        "例: [{\"day\": 1, \"time\": \"9:00\", \"spot\": \"大阪城\"}, ...]"
     )
     try:
         response = client.chat.completions.create(
@@ -84,11 +85,19 @@ def generate_itinerary(query):
         if not content:
             st.warning('OpenAIの応答が空でした。')
             return []
-        return json.loads(content)
-    except json.JSONDecodeError as je:
-        st.error(f"JSON読み込みエラー: {je}")
-        st.text(content)  # デバッグ表示
-        return []
+
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                return parsed
+            else:
+                st.warning("応答形式が正しくありません。JSON配列を返すようにしてください。")
+                st.text(content)
+                return []
+        except json.JSONDecodeError as je:
+            st.error(f"JSON読み込みエラー: {je}")
+            st.text(content)
+            return []
     except Exception as e:
         st.error(f"行程生成中にエラー: {e}")
         return []
