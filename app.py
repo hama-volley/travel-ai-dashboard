@@ -125,6 +125,7 @@ def get_place_info(name):
 
         desc = ''
         photo_url = None
+        pid = None
         if find:
             pid = find[0]['place_id']
             det = requests.get(
@@ -148,10 +149,10 @@ def get_place_info(name):
             )
             desc = ai.choices[0].message.content
 
-        return desc, addr, photo_url, (lat, lng)
+        return desc, addr, photo_url, (lat, lng), pid
     except Exception as e:
         st.error(f"情報取得エラー: {e}")
-        return '', '住所情報なし', None, (None, None)
+        return '', '住所情報なし', None, (None, None), None
 
 # --- YouTubeリンク ---
 def get_youtube(name):
@@ -194,7 +195,7 @@ if sel:
     spot = sel['spot']
     st.header(f"📍 {spot} ({sel['time']})")
     with st.spinner('情報取得中...'):
-        desc, addr, img, (lat, lng) = get_place_info(spot)
+        desc, addr, img, (lat, lng), pid = get_place_info(spot)
         yt = get_youtube(spot)
     col1, col2 = st.columns([2, 3])
     with col1:
@@ -209,7 +210,10 @@ if sel:
             st.image(img, caption=spot, use_container_width=True)
         else:
             st.warning('画像が見つかりませんでした')
-    if lat and lng:
+    if pid:
+        map_url = f"https://www.google.com/maps/embed/v1/place?key={google_key}&q=place_id:{pid}"
+        components.iframe(map_url, height=300, allowfullscreen=True)
+    elif lat and lng:
         map_url = f"https://www.google.com/maps/embed/v1/place?key={google_key}&q={lat},{lng}"
         components.iframe(map_url, height=300, allowfullscreen=True)
     else:
